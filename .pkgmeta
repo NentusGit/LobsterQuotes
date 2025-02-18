@@ -2,3 +2,6 @@ package-as: LobsterQuotes
 
 ignore:
     - quotes_data.lua
+
+manual-changelog:
+    CHANGELOG.md
