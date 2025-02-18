@@ -1,0 +1,13 @@
+## Interface: 110007, 110100
+## Title: |cffee5555Lobster|rQuotes
+## Notes: Make quotes and send on encounter wipes.
+## Author: Savtus
+## Version: 0.7.4
+## DefaultState: Enabled
+## IconTexture: 134048
+## SavedVariables: LobsterQuotesDB
+## X-Curse-Project-ID: 1177776
+
+
+lobsterquotes.lua
+
