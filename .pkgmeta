@@ -1,0 +1,4 @@
+package-as: LobsterQuotes
+
+ignore:
+    - quotes_data.lua
