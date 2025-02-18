@@ -1,4 +1,10 @@
 package-as: LobsterQuotes
 
+ignore:
+  - .github/*
+  - .gitignore
+  - CHANGELOG.md
+
 manual-changelog:
     CHANGELOG.md
+    markup-type: markdown
