@@ -23,7 +23,7 @@ local math = math
 local string = string
 
 -- Constants
-local ADDON_VERSION = "0.7.5"
+local ADDON_VERSION = "0.7.6"
 local PORTRAIT_TEXTURE_ID = 134048 --Icon of a Lobster
 
 -- Quote Management Functions
