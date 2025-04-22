@@ -2,7 +2,7 @@
 ## Title: |cffee5555Lobster|rQuotes
 ## Notes: Make quotes and send on encounter wipes.
 ## Author: Savtus
-## Version: 0.7.5
+## Version: 0.7.7
 ## DefaultState: Enabled
 ## IconTexture: 134048
 ## SavedVariables: LobsterQuotesDB
