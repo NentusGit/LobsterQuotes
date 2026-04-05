@@ -8,77 +8,33 @@ LobsterQuotesDB = LobsterQuotesDB or {
         defaultChannel = "RAID",
         guildGroupRequired = true,
         noRepeat = true,
+        requireRaid = true,
         debug = false,
-        lastQuoteSent = nil
+        lastQuoteSent = {}
     }
 }
 
 -- Local variables because thats apparently better performance?
 local CreateFrame = CreateFrame
-local SendChatMessage = SendChatMessage
+local SendChatMessage = C_ChatInfo.SendChatMessage
 local PlaySound = PlaySound
-local IsInRaid = IsInRaid
 local table = table
 local math = math
 local string = string
 
 -- Constants
-local ADDON_VERSION = "0.7.7"
-local PORTRAIT_TEXTURE_ID = 134048 --Icon of a Lobster
+local PORTRAIT_TEXTURE_ID = 132482 --134048 --Icon of a Lobster
+local ROW_HEIGHT_COLLAPSED = 30
+local ROW_HEIGHT_EXPANDED = 90
 
 -- Quote Management Functions
 function LobsterQuotes:AddQuote(content, author)
     if not content then return end
-    
-    local quote = {
+    table.insert(LobsterQuotesDB.quotes, {
         content = content,
         author = author or "Unknown",
-    }
-    
-    table.insert(LobsterQuotesDB.quotes, quote)
+    })
     self:RefreshQuoteDisplay()
-end
-
-function LobsterQuotes:GetRandomQuote() -- With repetiton protection if LobsterQuotesDB.settings.noRepeat is true
-    local quotes = LobsterQuotesDB.quotes
-    if #quotes == 0 then return nil end
-    if LobsterQuotesDB.settings.noRepeat and #quotes > 1 then
-        local availableQuotes = {}
-        for i = 1, #quotes do
-            if i ~= LobsterQuotesDB.settings.lastQuoteSent then
-                table.insert(availableQuotes, i)
-            end
-        end
-        local selectedQuote = availableQuotes[math.random(#availableQuotes)]
-        LobsterQuotesDB.settings.lastQuoteSent = selectedQuote
-        return quotes[selectedQuote]
-    else
-        local selectedQuote = math.random(#quotes)
-        LobsterQuotesDB.settings.lastQuoteSent = selectedQuote
-        return quotes[selectedQuote]
-    end
-end
-
-function LobsterQuotes:InGuildGroup()
-    local isInGuildGroup,_,_,_ = InGuildParty()
-    if isInGuildGroup == true then
-        return true 
-    else return false
-    end
-end
-
-function LobsterQuotes:RequiredGuildGroupMet()
-    if LobsterQuotes:InGuildGroup() and LobsterQuotesDB.settings.guildGroupRequired or LobsterQuotes:InGuildGroup() and not LobsterQuotesDB.settings.guildGroupRequired then
-        return true
-    else return false end
-end
-
-function LobsterQuotes:SendRandomQuote(channel)
-    local quote = self:GetRandomQuote()
-    if not quote then return end
-    local message = string.format("%s - %s", quote.content, quote.author)
-    local selectedChannel = channel or LobsterQuotesDB.settings.defaultChannel
-    SendChatMessage(message, selectedChannel)
 end
 
 function LobsterQuotes:RemoveQuote(index)
@@ -98,13 +54,70 @@ end
 
 function LobsterQuotes:SendQuote(index, channel)
     if index and LobsterQuotesDB.quotes[index] then
-        local selectedChannel = channel or LobsterQuotesDB.settings.defaultChannel
-        local content = LobsterQuotesDB.quotes[index].content
-        local author = LobsterQuotesDB.quotes[index].author
-        local message = string.format("%s - %s", content, author)
-        SendChatMessage(message, selectedChannel)
+        local quote = LobsterQuotesDB.quotes[index]
+        local message = string.format("%s - %s", quote.content, quote.author)
+        SendChatMessage(message, channel or LobsterQuotesDB.settings.defaultChannel)
     end
 end
+
+function LobsterQuotes:GetRandomQuote() -- With repetiton protection if LobsterQuotesDB.settings.noRepeat is true
+    local quotes = LobsterQuotesDB.quotes
+    if #quotes == 0 then return nil end
+
+    if LobsterQuotesDB.settings.noRepeat and #quotes > 1 then
+        local availableQuotes = {}
+        for i = 1, #quotes do
+            if i ~= LobsterQuotesDB.settings.lastQuoteSent then
+                table.insert(availableQuotes, i)
+            end
+        end
+        local selectedQuote = availableQuotes[math.random(#availableQuotes)]
+        LobsterQuotesDB.settings.lastQuoteSent = selectedQuote
+        return quotes[selectedQuote]
+    else
+        local selectedQuote = math.random(#quotes)
+        LobsterQuotesDB.settings.lastQuoteSent = selectedQuote
+        return quotes[selectedQuote]
+    end
+end
+
+function LobsterQuotes:SendRandomQuote(channel)
+    local quote = self:GetRandomQuote()
+    if not quote then
+        self:Debug("SendRandomQuote failed because empty quote list?")return end
+    local message = string.format("%s - %s", quote.content, quote.author)
+    local selectedChannel = channel or LobsterQuotesDB.settings.defaultChannel
+    if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        selectedChannel = "INSTANCE_CHAT"
+    end
+    self:Debug("Sending to channel=%s", selectedChannel)
+    SendChatMessage(message, selectedChannel)
+end
+
+function LobsterQuotes:Debug(msg,...)
+    if not LobsterQuotesDB.settings.debug then return end
+    print(string.format("|cff00ccffDebug:|r "..msg,...))
+end
+
+function LobsterQuotes:IsInRaid()
+    if LobsterQuotesDB.settings.debug then
+        self:Debug("IsInRaid() bypassed for solo testing")
+        return true
+    end
+    return IsInRaid()
+end
+
+function LobsterQuotes:InGuildGroup()
+    return C_PartyInfo.IsGuildGroup()
+end
+
+function LobsterQuotes:RequiredGuildGroupMet()
+    if LobsterQuotesDB.settings.guildGroupRequired then
+        return self:InGuildGroup()
+    end
+    return true
+end
+
 
 function LobsterQuotes:ShowAddQuoteDialog()
     if self.addQuoteDialog then
@@ -112,20 +125,17 @@ function LobsterQuotes:ShowAddQuoteDialog()
         return
     end
     
-    -- Create the dialog frame
     local dialog = CreateFrame("Frame", "LobsterQuotesAddDialog", UIParent, "DefaultPanelTemplate")
     dialog:SetSize(400, 240)
     dialog:SetPoint("CENTER")
     dialog:SetFrameStrata("DIALOG")
     
-    -- Make it movable
     dialog:EnableMouse(true)
     dialog:SetMovable(true)
     dialog:RegisterForDrag("LeftButton")
     dialog:SetScript("OnDragStart", dialog.StartMoving)
     dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
     
-    -- Set the title
     dialog.TitleContainer.TitleText:SetText("Add New Quote")
     
     -- Create quote input box
@@ -138,13 +148,11 @@ function LobsterQuotes:ShowAddQuoteDialog()
     quoteEditBox:SetMaxLetters(240)
     quoteEditBox:SetMultiLine(true)
     
-    --Add background texture to quote input
     local quoteBg = dialog:CreateTexture(nil, "BACKGROUND")
     quoteBg:SetPoint("TOPLEFT", quoteEditBox, "TOPLEFT", -5, 5)
     quoteBg:SetPoint("BOTTOMRIGHT", quoteEditBox, "BOTTOMRIGHT", 5, -5)
     quoteBg:SetColorTexture(0, 0, 0, 0.3)
     
-    -- Create author input box
     local authorEditBox = CreateFrame("EditBox", nil, dialog)
     authorEditBox:SetPoint("TOPLEFT", quoteEditBox, "BOTTOMLEFT", 0, -30)
     authorEditBox:SetPoint("RIGHT", dialog, "RIGHT", -20, 0)
@@ -153,7 +161,6 @@ function LobsterQuotes:ShowAddQuoteDialog()
     authorEditBox:SetAutoFocus(false)
     authorEditBox:SetMaxLetters(50)
     
-    -- Add background texture to author input
     local authorBg = dialog:CreateTexture(nil, "BACKGROUND")
     authorBg:SetPoint("TOPLEFT", authorEditBox, "TOPLEFT", -5, 5)
     authorBg:SetPoint("BOTTOMRIGHT", authorEditBox, "BOTTOMRIGHT", 5, -5)
@@ -201,11 +208,9 @@ function LobsterQuotes:ShowAddQuoteDialog()
     local function OnEscapePressed(self)
         self:ClearFocus()
     end
-    
     local function OnEnterPressed(self)
         saveBtn:Click()
     end
-    
     quoteEditBox:SetScript("OnEscapePressed", OnEscapePressed)
     quoteEditBox:SetScript("OnEnterPressed", OnEnterPressed)
     authorEditBox:SetScript("OnEscapePressed", OnEscapePressed)
@@ -220,24 +225,20 @@ end
 
 -- UI Creation and Management
 function LobsterQuotes:CreateMainFrame()
-    -- Create main frame
     local frame = CreateFrame("Frame", "LobsterQuotesFrame", UIParent, "PortraitFrameTexturedBaseTemplate")
     frame:SetPoint("CENTER")
-    frame:SetSize(500, 580)
-    frame.Bg:SetAlpha(0.8)
+    frame:SetSize(550, 500)
+    frame.Bg:SetAlpha(1)
     
-    -- Set title and portrait
-    frame.TitleContainer.TitleText:SetText("LobsterQuotes v" .. ADDON_VERSION)
+    frame.TitleContainer.TitleText:SetText("LobsterQuotes Duct Taped Edition") --.. ADDON_VERSION)
     frame.PortraitContainer.portrait:SetTexture(PORTRAIT_TEXTURE_ID)
     
-    -- Make frame movable
     frame:EnableMouse(true)
     frame:SetMovable(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
     
-    -- Add close button
     frame.closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButtonDefaultAnchors")
     
     -- Make frame closeable with Escape key
@@ -247,123 +248,192 @@ function LobsterQuotes:CreateMainFrame()
     return frame
 end
 
-function LobsterQuotes:CreateScrollFrame()
-    local container = CreateFrame("ScrollFrame", "LobsterQuotesMainFrameScrollFrame", self.mainFrame, "UIPanelScrollFrameTemplate")
-    container:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 15, -60)
-    container:SetPoint("BOTTOMRIGHT", self.mainFrame, "BOTTOMRIGHT", -35, 15)  
+function LobsterQuotes:CreateScrollBox()
+    local scrollBox = CreateFrame("Frame", "LobsterQuotesScrollBox", self.mainFrame, "WowScrollBoxList")
+    scrollBox:SetPoint("TOPLEFT", self.mainFrame, "TOPLEFT", 10, -60)
+    scrollBox:SetPoint("BOTTOMRIGHT", self.mainFrame, "BOTTOMRIGHT", -24, 20)
+    scrollBox.bg = scrollBox:CreateTexture(nil,"BACKGROUND")
+    scrollBox.bg:SetAllPoints()
+    scrollBox.bg:SetColorTexture(0,0,0,0.1)
+
+    local scrollBar = CreateFrame("EventFrame", nil, self.mainFrame, "MinimalScrollBar")
+    scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", 7,0)
+    scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 2,0)
+    --scrollBar:SetHideIfUnscrollable(true)
+    local view = CreateScrollBoxListLinearView()
+
+    view:SetElementExtentCalculator(function(dataIndex, elementData)
+        if elementData.expanded then
+            return ROW_HEIGHT_EXPANDED
+        end
+        return ROW_HEIGHT_COLLAPSED
+    end)
+
+    view:SetElementInitializer("Frame", function(frame, elementData)
+        if not frame.bg then
+            frame.bg = frame:CreateTexture(nil, "BACKGROUND")
+            frame.bg:SetAllPoints()
+        end
+        if elementData.index % 2 == 0 then
+            frame.bg:SetColorTexture(0,0,0,0.10)
+        else   
+            frame.bg:SetColorTexture(1,1,1,0.05)
+        end
+
+        if not frame.text then
+            frame.text = frame:CreateFontString(nil,"ARTWORK", "GameFontHighlight")
+            frame.text:SetPoint("TOPLEFT", frame, "TOPLEFT", 10,-8)
+            frame.text:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -10,8)
+            frame.text:SetJustifyH("LEFT")
+            frame.text:SetJustifyV("TOP")
+            frame.text:SetWordWrap(true)
+        end
+
+        if elementData.expanded then
+            frame.text:SetMaxLines(0)
+        else
+            frame.text:SetMaxLines(1)
+        end
+        frame.text:SetText(string.format("#%d %s - %s", elementData.index, elementData.content, elementData.author))
+
+        -- Expand on leftclick and Send/Edit/Delete menu on rightclick
+        frame:EnableMouse(true)
+        frame:SetScript("OnMouseDown", function(self, button)
+            if button == "LeftButton" then
+                elementData.expanded = not elementData.expanded
+                scrollBox:Rebuild(true)
+            elseif button == "RightButton" then
+                MenuUtil.CreateContextMenu(self, function(ownerRegion, rootDescription)
+                    rootDescription:CreateTitle(string.format("Quote #%d", elementData.index))
+                    rootDescription:CreateButton("Send", function()
+                        LobsterQuotes:SendQuote(elementData.index)
+                    end) 
+                    rootDescription:CreateButton("Edit", function()
+                        LobsterQuotes:ShowEditQuoteDialog(elementData.index, elementData)
+                    end) 
+                    rootDescription:CreateDivider()
+                    rootDescription:CreateButton("Delete", function()
+                        StaticPopup_Show("LOBSTERQUOTES_CONFIRM_DELETE", nil,nil,{index = elementData.index})
+                    end)
+                end)
+            end  
+        end)
+
+        if not frame.highlight then
+            frame.highlight = frame:CreateTexture(nil, "HIGHLIGHT")
+            frame.highlight:SetAllPoints()
+            frame.highlight:SetColorTexture(1,1,0,0.05)
+        end
+
+    end)
+
+    ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+    self.scrollBox = scrollBox
     
-    local content = CreateFrame("Frame", nil, container)
-    content:SetSize(container:GetWidth(), 1)
-    container:SetScrollChild(content)
-    
-    self.scrollFrame = content
-    self.scrollContainer = container
+end
+
+function LobsterQuotes:BuildDataProvider(filterText)
+    local elements = {}
+    local search = filterText and filterText:lower()
+    for i, quote in ipairs(LobsterQuotesDB.quotes) do
+        if not search
+            or quote.content:lower():find(search, 1, true)
+            or quote.author:lower():find(search,1, true)
+        then
+            table.insert(elements, {
+                index = i,
+                content = quote.content,
+                author = quote.author,
+                expanded = false,
+            })
+        end
+    end
+        return CreateDataProvider(elements)
+end
+
+function LobsterQuotes:RefreshQuoteDisplay()
+    if not self.scrollBox then return end
+    local search = self.searchBox and self.searchBox:GetText()
+    local filterText = (search and search ~= "") and search or nil
+    self.scrollBox:SetDataProvider(
+        self:BuildDataProvider(filterText),
+        ScrollBoxConstants.RetainScrollPosition
+    )
+
 end
 
 
 function LobsterQuotes:CreateSettingsDropdown()
-    
     local function GeneratorFunction(owner, rootDescription)
-
-        local autoSendBtn = rootDescription:CreateButton("Toggle Auto Sending", function()
-            if LobsterQuotesDB.settings.autoSendOnWipe == true then
-                LobsterQuotesDB.settings.autoSendOnWipe = false
-                print("|cFFee5555[LobsterQuotes]|r Sending on wipe has been |cFFee5555DISABLED|r.")
-            else
-                LobsterQuotesDB.settings.autoSendOnWipe = true
-                print("|cFFee5555[LobsterQuotes]|r Sending on wipe has been |cFF55ee55ENABLED|r.")
-            end
-        end)
-            autoSendBtn:AddInitializer(function(button,description,menu)
+        
+        -- Helper
+        local function CreateToggleButton(label, settingKey, tooltipText)
+            local btn = rootDescription:CreateButton(label, function()
+                LobsterQuotesDB.settings[settingKey] = not LobsterQuotesDB.settings[settingKey]
+                return MenuResponse.Refresh
+            end)
+            btn:AddInitializer(function(button, description, menu)
                 local rightText = button:AttachFontString()
                 rightText:SetPoint("RIGHT")
-                rightText:SetText("Enabled")
                 rightText:SetJustifyH("RIGHT")
-                if LobsterQuotesDB.settings.autoSendOnWipe == true then
+                if LobsterQuotesDB.settings[settingKey] then
+                    rightText:SetText("Enabled")
                     rightText:SetTextColor(0,1,0,1)
                 else
-                    rightText:SetTextColor(1,0,0,1)
                     rightText:SetText("Disabled")
+                    rightText:SetTextColor(1,0,0,1)
                 end
-                local pad = 20
-                local width = pad + rightText:GetUnboundedStringWidth()
-                local height = 20
-                return width, height
+                local width = 200 --+ rightText:GetUnboundedStringWidth()
+                return width, 20
             end)
-        local guildBtn = rootDescription:CreateButton("Toggle Guild Requirement", function()
-            if LobsterQuotesDB.settings.guildGroupRequired == true then
-                LobsterQuotesDB.settings.guildGroupRequired = false
-                print("|cFFee5555[LobsterQuotes]|r Guildgroup requirement has been |cFFee5555DISABLED|r.")
-            else
-                LobsterQuotesDB.settings.guildGroupRequired = true
-                print("|cFFee5555[LobsterQuotes]|r Guildgroup requirement has been |cFF55ee55ENABLED|r.")
+            if tooltipText then
+                btn:SetTooltip(function(tooltip, elementDescription)
+                    GameTooltip_AddHighlightLine(tooltip,tooltipText)
+                end)
             end
-        end)
-            guildBtn:AddInitializer(function(button,description,menu)
-                local rightText2 = button:AttachFontString()
-                rightText2:SetPoint("RIGHT")
-                rightText2:SetText("Enabled")
-                rightText2:SetJustifyH("RIGHT")
-                if LobsterQuotesDB.settings.guildGroupRequired == true then
-                    rightText2:SetTextColor(0,1,0,1)
-                else
-                    rightText2:SetTextColor(1,0,0,1)
-                    rightText2:SetText("Disabled")
-                end
-                local pad2 = 150
-                local width2 = pad2 + rightText2:GetUnboundedStringWidth()
-                local height2 = 20
-                return width2, height2
-            end)
-        local repeatBtn = rootDescription:CreateButton("Toggle Repeat Protection", function()
-            if LobsterQuotesDB.settings.noRepeat == true then
-                LobsterQuotesDB.settings.noRepeat = false
-                print("|cFFee5555[LobsterQuotes]|r Repetition protection has been |cFFee5555DISABLED|r.")
-            else
-                LobsterQuotesDB.settings.noRepeat = true
-                print("|cFFee5555[LobsterQuotes]|r Repetition protection has been |cFF55ee55ENABLED|r.")
-            end
-        end)
-            repeatBtn:AddInitializer(function(button,description,menu)
-                local rightText3 = button:AttachFontString()
-                rightText3:SetPoint("RIGHT")
-                rightText3:SetText("Enabled")
-                rightText3:SetJustifyH("RIGHT")
-                if LobsterQuotesDB.settings.noRepeat == true then
-                    rightText3:SetTextColor(0,1,0,1)
-                else
-                    rightText3:SetTextColor(1,0,0,1)
-                    rightText3:SetText("Disabled")
-                end
-                local pad3 = 150
-                local width3 = pad3 + rightText3:GetUnboundedStringWidth()
-                local height3 = 20
-                return width3, height3
-            end)
-        rootDescription:QueueDivider()
-        local channelmenu = rootDescription:CreateButton("Channel selection")
-        local raidBtn = channelmenu:CreateButton("RAID", function ()
-                LobsterQuotesDB.settings.defaultChannel = "RAID"
-                print("Channel has been set to RAID.") end)
-        channelmenu:CreateButton("GUILD", function ()
-                LobsterQuotesDB.settings.defaultChannel = "GUILD"
-                print("Channel has been set to GUILD.") end)
-        channelmenu:CreateButton("EMOTE", function ()
-                LobsterQuotesDB.settings.defaultChannel = "EMOTE"
-                print("Channel has been set to EMOTE.") end)
+        end
 
-        rootDescription:QueueDivider()
-        rootDescription:CreateButton("Add New Quote", function()
-            self:ShowAddQuoteDialog() end)
-        rootDescription:CreateButton("Import", function()
-            self:ShowImportDialog() end)
-       end
+        CreateToggleButton("Auto Send", "autoSendOnWipe")
+        CreateToggleButton("Only Send In Raid", "requireRaid")
+        rootDescription:CreateDivider()
+        CreateToggleButton("Require A Guild Group", "guildGroupRequired")
+        CreateToggleButton("Repeat Protection", "noRepeat")
+        rootDescription:CreateDivider()
+        rootDescription:CreateButton("Add New Quote", function() self:ShowAddQuoteDialog() end)
+        rootDescription:CreateButton("Import", function() self:ShowImportDialog() end)
+        rootDescription:CreateDivider()
+        CreateToggleButton("DEBUG", "debug", "Will bypass Only Send In Raid if enabled to allow testing solo.")
+
+        
+
+    end    
     
     local dropdown = CreateFrame("DropdownButton", nil, self.mainFrame, "WowStyle1DropdownTemplate")
-    dropdown:SetDefaultText("Configure")
-    dropdown:SetPoint("TOP",-120,-30)
+    dropdown:SetDefaultText("Settings")
+    dropdown:SetPoint("TOP",-150,-30)
     dropdown:SetupMenu(GeneratorFunction)
 
+    self.SettingsDropdown = dropdown
+end
+
+function LobsterQuotes:CreateChannelDropdown()
+    local channels = {"RAID","GUILD","PARTY"}
+    local dropdown = CreateFrame("DropdownButton",nil,self.mainFrame, "WowStyle1DropdownTemplate")
+    dropdown:SetPoint("LEFT",self.SettingsDropdown,"RIGHT",15,0)
+    dropdown:SetDefaultText("Channel")
+    dropdown:SetupMenu(function(owner, rootDescription)
+        rootDescription:CreateTitle("Send Channel")
+        for _, ch in ipairs(channels) do
+            rootDescription:CreateRadio(ch, 
+            function() return LobsterQuotesDB.settings.defaultChannel == ch end,
+            function()
+                LobsterQuotesDB.settings.defaultChannel = ch
+                self:Debug("Default channel changed to %s", ch) 
+            end
+        )
+        end
+    end)
+    self.channelDropdown = dropdown
 end
 
 function LobsterQuotes:ShowEditQuoteDialog(index, quote)
@@ -505,7 +575,6 @@ function LobsterQuotes:ImportQuotesFromString(quotesString)
     return imported, failed
 end
 
--- Import Dialog
 function LobsterQuotes:ShowImportDialog()
     if self.importDialog then
         self.importDialog:Show()
@@ -531,7 +600,7 @@ function LobsterQuotes:ShowImportDialog()
     
     local editBox = CreateFrame("EditBox", nil, scrollFrame)
     editBox:SetMultiLine(true)
-    editBox:SetFontObject("ChatFontNormal")
+    editBox:SetFontObject("GameFontHighlight")
     editBox:SetWidth(scrollFrame:GetWidth())
     editBox:SetAutoFocus(false)
     
@@ -546,7 +615,7 @@ function LobsterQuotes:ShowImportDialog()
     -- Import button
     local importBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
     importBtn:SetSize(100, 25)
-    importBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -5, 20)
+    importBtn:SetPoint("BOTTOMRIGHT", dialog, "BOTTOM", -5, 10)
     importBtn:SetText("Import")
     importBtn:SetScript("OnClick", function()
         local text = editBox:GetText()
@@ -559,7 +628,7 @@ function LobsterQuotes:ShowImportDialog()
     -- Cancel button
     local cancelBtn = CreateFrame("Button", nil, dialog, "UIPanelButtonTemplate")
     cancelBtn:SetSize(100, 25)
-    cancelBtn:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", 5, 20)
+    cancelBtn:SetPoint("BOTTOMLEFT", dialog, "BOTTOM", 5, 10)
     cancelBtn:SetText("Cancel")
     cancelBtn:SetScript("OnClick", function()
         dialog:Hide()
@@ -575,23 +644,22 @@ end
 --Quote filter system
 function LobsterQuotes:CreateSearchBox()
     local searchContainer = CreateFrame("Frame", "SearchFrame", self.mainFrame)
-    searchContainer:SetSize(250, 30)
-    searchContainer:SetPoint("TOPRIGHT", self.mainFrame, "TOPRIGHT", -40, -28)
+    searchContainer:SetSize(180, 30)
+    searchContainer:SetPoint("TOPRIGHT", self.mainFrame, "TOPRIGHT", -20, -26)
 
     local searchBox = CreateFrame("EditBox", "SearchBox", searchContainer, "SearchBoxTemplate")
-    searchBox:SetSize(240, 20)
+    searchBox:SetSize(170, 20)
     searchBox:SetPoint("CENTER")
     searchBox:SetFontObject("GameFontHighlight")
     searchBox:SetAutoFocus(false)
     searchBox.Instructions:SetText("Search Quotes...")
 
     searchBox:SetScript("OnTextChanged", function(self, userInput)
+        LobsterQuotes:RefreshQuoteDisplay()
         local text = self:GetText()
         if text and text ~= "" then
             self.Instructions:Hide()
-            LobsterQuotes:FilterQuotes(text)
         else
-            LobsterQuotes:RefreshQuoteDisplay()
             self.Instructions:Show()
         end
     end)
@@ -599,199 +667,13 @@ function LobsterQuotes:CreateSearchBox()
     searchBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
         self:SetText("")
-        LobsterQuotes:RefreshQuoteDisplay()
     end)
     self.searchBox = searchBox
 end
 
-function LobsterQuotes:FilterQuotes(searchText)
-    if not self.scrollFrame then return end
-    
-    -- Clear existing quotes display and display the filtered ones
-    for _, child in pairs({self.scrollFrame:GetChildren()}) do
-        child:Hide()
-        child:SetParent(nil)
-    end
-    
-    searchText = searchText:lower()
-    local buttonSpace = 70
-    local rightPadding = 10
-    local availableWidth = self.scrollFrame:GetWidth() - buttonSpace - rightPadding
-    
-    local totalHeight = 0
-    local minQuoteHeight = 30
-    local displayIndex = 1 
-    
-    for i, quote in ipairs(LobsterQuotesDB.quotes) do
-        local content = quote.content:lower()
-        local author = quote.author:lower()
-        
-        if content:find(searchText) or author:find(searchText) then
-            local quoteFrame = CreateFrame("Frame", nil, self.scrollFrame)
-            quoteFrame:SetWidth(self.scrollFrame:GetWidth())
-            
-            local text = quoteFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-            text:SetPoint("TOPLEFT", quoteFrame, "TOPLEFT", 10, -5)
-            text:SetWidth(availableWidth)
-            text:SetJustifyH("LEFT")
-            text:SetText(string.format("#%d %s - %s", i, quote.content, quote.author))
-            
-            local textHeight = text:GetStringHeight() + 10
-            local frameHeight = math.max(minQuoteHeight, textHeight)
-            quoteFrame:SetHeight(frameHeight)
-            quoteFrame:SetPoint("TOPLEFT", self.scrollFrame, "TOPLEFT", 0, -totalHeight)
-            
-            local sendBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-            sendBtn:SetSize(20, 20)
-            sendBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -48, -(frameHeight/2 - 15))
-            sendBtn:SetText("S")
-            sendBtn:SetScript("OnClick", function()
-                self:SendQuote(i)
-            end)
-            sendBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Send")
-                GameTooltip:Show()
-            end)
-            sendBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-            
-            local editBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-            editBtn:SetSize(20, 20)
-            editBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -25, -(frameHeight/2 - 15))
-            editBtn:SetText("E")
-            editBtn:SetScript("OnClick", function()
-                self:ShowEditQuoteDialog(i, quote)
-            end)
-            editBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Edit")
-                GameTooltip:Show()
-            end)
-            editBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-            
-            local deleteBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-            deleteBtn:SetSize(20, 20)
-            deleteBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -2, -(frameHeight/2 - 15))
-            deleteBtn:SetText("D")
-            deleteBtn:SetScript("OnClick", function()
-                StaticPopup_Show("LOBSTERQUOTES_CONFIRM_DELETE", nil, nil, {index = i})
-            end)
-            deleteBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText("Delete")
-                GameTooltip:Show()
-            end)
-            deleteBtn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-            
-            totalHeight = totalHeight + frameHeight
-            displayIndex = displayIndex + 1
-        end
-    end
-    
-    self.scrollFrame:SetHeight(totalHeight)
-end
-
-
-
-function LobsterQuotes:RefreshQuoteDisplay()
-    if not self.scrollFrame then return end
-    
-    -- Clear existing quotes
-    for _, child in pairs({self.scrollFrame:GetChildren()}) do
-        child:Hide()
-        child:SetParent(nil)
-    end
-    
-    local buttonSpace = 70
-    local rightPadding = 10 
-    local availableWidth = self.scrollFrame:GetWidth() - buttonSpace - rightPadding
-    
-    local totalHeight = 0
-    local minQuoteHeight = 30
-    
-    for i, quote in ipairs(LobsterQuotesDB.quotes) do
-        local quoteFrame = CreateFrame("Frame", nil, self.scrollFrame)
-        quoteFrame:SetWidth(self.scrollFrame:GetWidth())
-        
-        -- Quote text
-        local text = quoteFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        text:SetPoint("TOPLEFT", quoteFrame, "TOPLEFT", 10, -5)
-        text:SetWidth(availableWidth)
-        text:SetJustifyH("LEFT")
-        text:SetText(string.format("#%d %s - %s", i, quote.content, quote.author))
-        
-        -- Calculate actual text height and set frame height
-        local textHeight = text:GetStringHeight() + 10  -- Add padding
-        local frameHeight = math.max(minQuoteHeight, textHeight)
-        quoteFrame:SetHeight(frameHeight)
-        
-        quoteFrame:SetPoint("TOPLEFT", self.scrollFrame, "TOPLEFT", 0, -totalHeight)
-        
-        -- Send button
-        local sendBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-        sendBtn:SetSize(20, 20)
-        sendBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -48, -(frameHeight/2 - 15))
-        sendBtn:SetText("S")
-        sendBtn:SetScript("OnClick", function()
-            self:SendQuote(i)
-        end)
-        sendBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Send")
-            GameTooltip:Show()
-        end)
-        sendBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-        
-        -- Edit button
-        local editBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-        editBtn:SetSize(20, 20)
-        editBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -25, -(frameHeight/2 - 15))
-        editBtn:SetText("E")
-        editBtn:SetScript("OnClick", function()
-            self:ShowEditQuoteDialog(i, quote)
-        end)
-        editBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Edit")
-            GameTooltip:Show()
-        end)
-        editBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-
-        -- Delete button
-        local deleteBtn = CreateFrame("Button", nil, quoteFrame, "UIPanelButtonTemplate")
-        deleteBtn:SetSize(20, 20)
-        deleteBtn:SetPoint("RIGHT", quoteFrame, "RIGHT", -2, -(frameHeight/2 - 15))
-        deleteBtn:SetText("D")
-        deleteBtn:SetScript("OnClick", function()
-            StaticPopup_Show("LOBSTERQUOTES_CONFIRM_DELETE", nil, nil, {index = i})
-        end)
-        deleteBtn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Delete")
-            GameTooltip:Show()
-        end)
-        deleteBtn:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-
-        totalHeight = totalHeight + frameHeight
-    end
-    
-    -- Set the scroll frame's content height
-    self.scrollFrame:SetHeight(totalHeight)
-end
 
 function LobsterQuotes:CreateCommunityButton()
+    if not CommunitiesFrame or not CommunitiesFrame.GuildInfoTab then return end
     local button = CreateFrame("Button", "LobsterQuotesCommunityButton", CommunitiesFrame, "UIPanelBorderedButtonTemplate")--"ActionButtonTemplate")
     button.Icon:SetTexture(PORTRAIT_TEXTURE_ID)
     button:SetSize(38,38)
@@ -814,8 +696,9 @@ function LobsterQuotes:Initialize()
         end
     end)
     self:CreateMainFrame()
-    self:CreateScrollFrame()
+    self:CreateScrollBox()
     self:CreateSettingsDropdown()
+    self:CreateChannelDropdown()
     self:CreateSearchBox()
     self:CreateCommunityButton()
     --------------------------------------
@@ -825,9 +708,31 @@ function LobsterQuotes:PLAYER_LOGIN()
     self:RefreshQuoteDisplay()
 end
 
-function LobsterQuotes:ENCOUNTER_END(encounterID, encounterName, difficultyID, groupSize, success)
-    if success == 0 and LobsterQuotesDB.settings.autoSendOnWipe and IsInRaid() and LobsterQuotes:RequiredGuildGroupMet() then
-        self:SendRandomQuote()
+function LobsterQuotes:ENCOUNTER_END(_,_,_,_,success)
+    self:Debug("ENCOUNTER_END fired. success=%d autoSend=%s inRaid=%s guildMet=%s",
+    success,
+    tostring(LobsterQuotesDB.settings.autoSendOnWipe),
+    tostring(self:IsInRaid()),
+    tostring(self:RequiredGuildGroupMet()))
+
+    if success == 0
+        and LobsterQuotesDB.settings.autoSendOnWipe
+        and self:IsInRaid()
+        and self:RequiredGuildGroupMet()
+    then
+        self:Debug("All Conditions met, starting quote sequence...")
+        local function AttemptSend()
+            if InCombatLockdown() then
+                self:Debug("Still in CombatLockdown, trying again in 0.5 seconds...")
+                C_Timer.After(0.5, AttemptSend)
+            else
+                self:Debug("No longer CombatLocked, sending now.")
+                self:SendRandomQuote()
+            end
+        end
+        C_Timer.After(0.3,AttemptSend)
+    else
+        self:Debug("Conditions NOT met.")
     end
 end
 
