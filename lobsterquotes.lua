@@ -108,7 +108,7 @@ function LobsterQuotes:IsInRaid()
 end
 
 function LobsterQuotes:InGuildGroup()
-    return C_PartyInfo.IsGuildGroup()
+    return IsInGuildGroup()
 end
 
 function LobsterQuotes:RequiredGuildGroupMet()
