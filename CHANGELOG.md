@@ -1,5 +1,9 @@
 # LobsterQuotes Changelog
 
+## 0.8.1
+
+* 12.1
+
 ## 0.8.0
 
 **Total rewrite imminent?**

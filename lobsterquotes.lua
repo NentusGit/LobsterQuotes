@@ -23,7 +23,7 @@ local math = math
 local string = string
 
 -- Constants
-local PORTRAIT_TEXTURE_ID = 132482 --134048 --Icon of a Lobster
+local PORTRAIT_TEXTURE_ID = 7966624 --132482 --134048 --Icon of a Lobster
 local ROW_HEIGHT_COLLAPSED = 30
 local ROW_HEIGHT_EXPANDED = 90
 
@@ -230,7 +230,7 @@ function LobsterQuotes:CreateMainFrame()
     frame:SetSize(550, 500)
     frame.Bg:SetAlpha(1)
     
-    frame.TitleContainer.TitleText:SetText("LobsterQuotes Duct Taped Edition") --.. ADDON_VERSION)
+    frame.TitleContainer.TitleText:SetText("LobsterQuotes Snek Edition") --.. ADDON_VERSION)
     frame.PortraitContainer.portrait:SetTexture(PORTRAIT_TEXTURE_ID)
     
     frame:EnableMouse(true)
@@ -322,7 +322,7 @@ function LobsterQuotes:CreateScrollBox()
         if not frame.highlight then
             frame.highlight = frame:CreateTexture(nil, "HIGHLIGHT")
             frame.highlight:SetAllPoints()
-            frame.highlight:SetColorTexture(1,1,0,0.05)
+            frame.highlight:SetColorTexture(0,1,0,0.05)
         end
 
     end)
